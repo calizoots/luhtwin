@@ -15,7 +15,52 @@
 //!
 //! <br>
 //!
-//! cba rn will do another day <3
+//! ## Examples
+//!
+//! these are just basic for now will add more this is still in dev stages
+//!
+//! ```rust
+//! use luhtwin::{ensure, LuhTwin};
+//! 
+//! fn other_test(a: u32, b: u32) -> u32 {
+//!     return a + b
+//! }
+//! 
+//! fn main() -> LuhTwin<()> {
+//!     let x = other_test(9, 10);
+//! 
+//!     ensure!(x == 10, "critical error");
+//! 
+//!     Ok(())
+//! }
+//! ```
+//! 
+//! ```rust
+//! use luhtwin::{bail, LuhTwin};
+//! 
+//! fn main() -> LuhTwin<()> {
+//!     bail!("bailing immediately");
+//! }
+//! ```
+//! 
+//! ```rust
+//! use luhtwin::{anyerror, at, LuhTwin, Severity};
+//! 
+//! fn main() -> LuhTwin<()> {
+//!     println!("Hello, world!");
+//! 
+//!     let err = anyerror!("critical bine")
+//!         .doc_link("http://bine.com/docs/criticalbine")
+//!         .issues(vec!("#103", "#104"))
+//!         .severity(Severity::Critical)
+//!         .build();
+//! 
+//!     let first = at!();
+//!     println!("{}", first);
+//! 
+//!     Err(err)
+//! }
+//! ```
 //!
 
 use std::error::Error;
