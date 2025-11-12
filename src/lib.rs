@@ -1,127 +1,192 @@
-//! [![github]](https://github.com/calizoots/luhtwin)&ensp;[![crates-io]](https://crates.io/crates/luhtwin)&ensp;[![docs-rs]](https://docs.rs/luhtwin)
+//! # luhtwin - Horrible Error Handling for Rust
 //!
-//! [github]: https://img.shields.io/badge/github-calizoots/anyhow-8da0cb?style=for-the-badge&labelColor=555555&logo=github
-//! [crates-io]: https://img.shields.io/crates/v/luhtwin.svg?style=for-the-badge&color=fc8d62&logo=rust
-//! [docs-rs]: https://img.shields.io/badge/docs.rs-luhtwin-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs
+//! `luhtwin` provides a horrible, non-ergonomic error handling system that emphasizes
+//! **context accumulation**, **structured diagnostics**, and **flexible formatting**.
+//! Built around the [`AnyError`] type, it allows you to wrap any error with rich
+//! metadata and progressively add context as errors bubble up through your application.
 //!
-//! # LuhTwin Error Handling
+//! ## Core Concepts
 //!
-//! Dont get comfortable with this library... in dev stages
-//! Prone to changes to api
-//! A horrible error-handling framework in Rust.
-//! Supports context chains, severity levels, strucutred metadata
-//! backtraces, and pretty printing. Designed to complicate your
-//! Error experience in rust
+//! - **[`AnyError`]** — The main error container that wraps any `Error` type with context chains
+//! - **[`ErrorContext`]** — Structured metadata including messages, file/line info, docs, and severity
+//! - **[`AnyErrorBuilder`]** — Builder for constructing AnyErrors.
+//! - **[`LuhTwin<T>`]** — Type alias for `Result<T, AnyError>`, the primary result type
 //!
-//! <br>
+//! ## Key Features
 //!
-//! This library provides [`luhtwin::LuhTwin`][LuhTwin] and
-//! [`luhtwin::AnyError`][AnyError], horrible ways to handle
-//! your errors. for usage look below.
-//!
-//! <br>
-//!
-//! ## Examples
-//!
-//! these are just basic for now will add more this is still in dev stages
-//!
+//! ### Context Chaining
+//! Add contextual information at each layer of your application:
 //! ```rust
-//! use luhtwin::{ensure, LuhTwin};
-//! 
-//! fn other_test(a: u32, b: u32) -> u32 {
-//!     return a + b
-//! }
-//! 
-//! fn main() -> LuhTwin<()> {
-//!     let x = other_test(9, 10);
-//! 
-//!     ensure!(x == 10, "critical error");
-//! 
-//!     Ok(())
-//! }
-//! ```
-//! 
-//! ```rust
-//! use luhtwin::{bail, LuhTwin};
-//! 
-//! fn main() -> LuhTwin<()> {
-//!     bail!("bailing immediately");
-//! }
-//! ```
-//! 
-//! ```rust
-//! use luhtwin::{anyerror, at, LuhTwin, Severity};
-//! 
-//! fn main() -> LuhTwin<()> {
-//!     println!("Hello, world!");
-//! 
-//!     let err = anyerror!("critical bine")
-//!         .doc_link("http://bine.com/docs/criticalbine")
-//!         .issues(vec!("#103", "#104"))
-//!         .severity(Severity::Critical)
-//!         .build();
-//! 
-//!     let first = at!();
-//!     println!("{}", first);
-//! 
-//!     Err(err)
+//! use luhtwin::{LuhTwin, at};
+//!
+//! fn read_config() -> LuhTwin<String> {
+//!     std::fs::read_to_string("config.toml")
+//!         .map_err(|e| e.into())
+//!         .map_err(|e: luhtwin::AnyError| e.with_context(at!("Failed to read config")))
 //! }
 //! ```
 //!
+//! ### Error Metadata
+//! Attach documentation links, issue trackers, custom metadata, and severity levels:
+//! ```rust
+//! use luhtwin::{anyerror, Level};
+//!
+//! let err = anyerror!("Database connection timeout")
+//!     .doc_link("https://docs.example.com/db-errors#timeout")
+//!     .issues(["DB-101", "DB-205"])
+//!     .metadata("host", "localhost:5432")
+//!     .metadata("retry_count", 3)
+//!     .severity(Level::Critical)
+//!     .build();
+//! ```
+//!
+//! ### Multiple Display Formats
+//! Choose the right format for your use case:
+//! - `display_pretty()` — Colorful terminal output
+//! - `display_full()` — Complete diagnostic report with backtrace
+//! - `display_contexts_tree()` — Hierarchical context visualization
+//! - `to_log_format()` — Structured logging format
+//!
+//! ## Quick Start
+//!
+//! ### Basic Error Creation
+//! ```rust
+//! use luhtwin::{anyerror, at, LuhTwin};
+//!
+//! fn might_fail(flag: bool) -> LuhTwin<i32> {
+//!     if flag {
+//!         Ok(42)
+//!     } else {
+//!         Err(anyerror!("Operation failed").build())
+//!     }
+//! }
+//! ```
+//!
+//! ### Adding Context to Existing Errors
+//! ```rust
+//! use luhtwin::{Context, LuhTwin};
+//!
+//! fn parse_file(path: &str) -> LuhTwin<String> {
+//!     let content = std::fs::read_to_string(path)
+//!         .context(format!("Failed to read file: {}", path))?;
+//!     Ok(content)
+//! }
+//! ```
+//!
+//! ### Working with Context Chains
+//! ```rust
+//! use luhtwin::{at, anyerror, LuhTwin};
+//!
+//! fn inner() -> LuhTwin<()> {
+//!     Err(anyerror!("Inner error").build())
+//! }
+//!
+//! fn middle() -> LuhTwin<()> {
+//!     inner().map_err(|e| e.with_context(at!("Middle layer failed")))
+//! }
+//!
+//! fn outer() -> LuhTwin<()> {
+//!     middle().map_err(|e| e.with_context(at!("Outer operation failed")))
+//! }
+//!
+//! // Error will contain all three contexts when displayed
+//! ```
+//!
+//! ## Macros
+//!
+//! - [`at!`] — Create an `ErrorContext` at the current file/line
+//! - [`anyerror!`] — Create an `AnyErrorBuilder`
+//! - [`bail!`] — Return early with an error
+//! - [`ensure!`] — Assert a condition or return an error
+//! - [`context!`] — Add context to a result
+//!
+//! ## Extension Traits
+//!
+//! - [`Context`] — Add context to any `Result<T, E>` where `E: Error`
+//! - [`MapErrExt`] — Map errors with additional context
+//! - [`LogError`] — Convenient error logging methods
+//!
+//! ## Error Display Examples
+//!
+//! ### Pretty Display (for terminals)
+//! ```text
+//! ERROR error: Failed to connect to database
+//!   --> src/db.rs:45
+//!
+//! context chain:
+//!   1. Failed to connect to database
+//!   2. Network timeout occurred
+//!
+//! caused by: Connection refused (os error 111)
+//! ```
+//!
+//! ### Tree Display (hierarchical contexts)
+//! ```text
+//! └─ Failed to connect to database
+//!     at src/db.rs:45
+//!     doc: https://docs.example.com/db-errors
+//!     issue: DB-101
+//! ├─ Network timeout occurred
+//!     at src/network.rs:102
+//! ```
+//!
+//! ### Log Format (structured logging)
+//! ```text
+//! message="Failed to connect to database" severity=Critical location="src/db.rs:45" source="Connection refused"
+//! ```
+//!
+//! > made with love s.c - 2025 :3
 
+#[cfg(test)]
+mod tests;
+
+use std::fmt;
 use std::error::Error;
+use std::collections::HashMap;
 use std::backtrace::Backtrace;
-use std::fmt::{self, Debug};
 use std::sync::Arc;
 
-/// Just a helper type for an ErrorSource to keep things consistent
+pub use luhlog::Level;
+pub use luhlog;
+
+/// A boxed error type that is `Send`, `Sync`, and `'static`.
+/// Just used for convience and also makes refactoring easier.
 pub type ErrorSource = Box<dyn Error + Send + Sync + 'static>;
 
-/// Severity levels for errors
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-/// it indicates the importance of a error or log message
-/// pretty self explanatory... 
-pub enum Severity {
-    // im not adding individual messages i think people are smarter
-    Debug,
-    Info,
-    Warning,
-    Error,
-    Critical,
-}
-
-impl fmt::Display for Severity {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            // in future love to make these customisable <3
-            Severity::Debug => write!(f, "DEBUG"),
-            Severity::Info => write!(f, "INFO"),
-            Severity::Warning => write!(f, "WARN"),
-            // 5 figure duppy
-            Severity::Error => write!(f, "ERROR"),
-            Severity::Critical => write!(f, "CRIT"),
-        }
-    }
-}
-
-/// The strucutre for all metadata for a given AnyError
+/// `ErrorContext` is the main structure for representing error metadata in luhtwin.
+/// It includes a message, file/line info, documentation links, related issues, metadata,
+/// and a severity level.
 ///
-/// does look a bit clumsy but dw - s.c 2025 |c|
-/// 
-/// To create a `ErrorContext` on the fly you can use
-/// `at!(...)` example...
+/// # Provided Methods
 ///
+/// - `with_doc_link(link)` — attach a documentation link to the error.
+/// - `with_issues(issues)` — attach a list of related issues.
+/// - `with_severity(level)` — change the severity of the error.
+/// - `with_metadata(key, value)` — attach custom metadata.
+///
+/// # Examples
+/// > mostly you would use this with the `luhtwin::at!` macro
+/// ---------------------------------------------------------------------------
+/// ```rust
+/// use luhtwin::{at, Level};
+///
+/// // Basic usage
+/// let err = at!("Something went wrong");
+/// println!("{}", err);
+/// let warn = at!("This is a warning", Level::Warn)
+///     .with_doc_link("https://docs.example.com/warnings")
+///     .with_issues(vec!["ISSUE-123", "ISSUE-456"])
+///     .with_metadata("user_id", 42);
+///
+/// println!("{}", warn);
+/// let unknown = at!();
+/// println!("{}", unknown);
 /// ```
-/// fn main() -> LuhTwin<()> {
-///     let err = anyerror!("test error")
-///         .severity(Severity::Critical)
-///         .build()
-///         .with_context(at!("chained error"));
-///     return Err(err)
-/// }
-/// ```
-/// or you can see here if you intention to is to make an `AnyError`
-/// you can use `anyerror!(...)` macro
+/// ---------------------------------------------------------------------------
+///
+/// # See Also
+/// - [`at!`] - for creating an ErrorContext on demand
+/// - [`AnyError`] - main structure for storing ErrorContexts
 #[derive(Debug, Clone)]
 pub struct ErrorContext {
     pub msg: String,
@@ -129,22 +194,15 @@ pub struct ErrorContext {
     pub line: Option<u32>,
     pub doc_link: Option<String>,
     pub issues: Vec<String>,
-    pub metadata: Vec<(String, String)>,
-    pub severity: Severity,
+    pub metadata: HashMap<String, String>,
+    pub severity: Level,
 }
 
 impl fmt::Display for ErrorContext {
-    /// will expand to something like
-    ///
-    /// error: critical bine error
-    /// --> src/main.rs:12
-    ///  documentation: https://bine.com/docs/critical-bine-error/
-    ///  related issues:
-    ///      - #104
-    ///      - #512
-    ///      - #3042
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "error: {}", self.msg)?;
+        let sev = self.severity.to_string();
+
+        writeln!(f, "{}: {}", sev, self.msg)?;
 
         if let Some(file) = &self.file {
             if let Some(line) = self.line {
@@ -159,9 +217,21 @@ impl fmt::Display for ErrorContext {
         }
 
         if !self.issues.is_empty() {
-            writeln!(f, " related issues:")?;
+            writeln!(f, "\nrelated issues:")?;
             for issue in &self.issues {
                 writeln!(f, "    - {}", issue)?;
+            }
+        }
+
+        if !self.metadata.is_empty() {
+            writeln!(f, "\nmetadata:")?;
+            // sort keys for stable output
+            let mut keys: Vec<_> = self.metadata.keys().collect();
+            keys.sort();
+            for key in keys {
+                if let Some(value) = self.metadata.get(key) {
+                    writeln!(f, "    {}: {}", key, value)?;
+                }
             }
         }
 
@@ -169,13 +239,14 @@ impl fmt::Display for ErrorContext {
     }
 }
 
-/// Just some basic combinators for ease
 impl ErrorContext {
+    /// Changes the doc link for `luhtwin::ErrorContext`
     pub fn with_doc_link(mut self, link: impl Into<String>) -> Self {
         self.doc_link = Some(link.into());
         self
     }
 
+    /// Changes the issues vector for `luhtwin::ErrorContext`
     pub fn with_issues<I, S>(mut self, issues: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -185,110 +256,50 @@ impl ErrorContext {
         self
     }
 
-    pub fn with_severity(mut self, severity: Severity) -> Self {
+    /// Changes the severity for `luhtwin::ErrorContext`
+    pub fn with_severity(mut self, severity: Level) -> Self {
         self.severity = severity;
         self
     }
 
+    /// Adds to the metadata of an `luhtwin::ErrorContext`
     pub fn with_metadata<K, V>(mut self, key: K, value: V) -> Self
     where
         K: Into<String>,
         V: fmt::Display,
     {
-        self.metadata.push((key.into(), value.to_string()));
+        self.metadata.insert(key.into(), value.to_string());
         self
     }
 }
 
-/// `luhtwin::at!(...)` produces an ErrorContext easily filling out basic metadata
-/// such as file and line and has a few different options
+/// `AnyError` is the main error type in luhtwin that acts as a **composable, context-rich error container**.
+/// 
+/// It can wrap any underlying error (`ErrorSource`), attach multiple `ErrorContext`s, and track
+/// additional metadata such as backtraces and logging status. Unlike plain `Box<dyn Error>`,
+/// `AnyError` provides structured error information, formatted displays, and utility methods
+/// for diagnostics, logging, and error chaining.
 ///
-/// you can also use different combinators such as .with_severity(),
-/// .with_metadata() or .with_issues() etc... to produce an error
-/// with your specified verboseness
+/// # Provided Methods
 ///
-/// ## Example
+/// - `new(err)` — creates a new `AnyError` from any underlying error.
+/// - `with_context(ctx)` — appends an additional `ErrorContext` to the error chain.
+/// - `max_severity()` — returns the maximum severity among all contexts.
+/// - `to_log_format()` — returns a structured string suitable for logging systems.
+/// - `display_pretty()` — ANSI-colored, human-friendly display of the error.
+/// - `display_contexts()` — compact linear view of all attached contexts.
+/// - `display_contexts_tree()` — hierarchical, tree-like view of the error chain.
+/// - `display_backtrace()` — prints the captured backtrace.
+/// - `display_full()` — comprehensive report including severity, contexts, root cause, and backtrace.
+/// - `root_cause()` — retrieves the underlying root cause of the error.
+/// - `iter_sources()` — iterator over the full chain of source errors.
+/// - `mark_logged()` / `is_logged()` — mark the error as logged or query its status.
 ///
-/// ```
-/// fn main() -> LuhTwin<()> {
-///     let first = at!("first bine");
-///     // error: first bine
-///     //  --> src/main.rs:4
-///     let second = at!("second bine", Severity::Critical);
-///     // no output difference just trust me bro else sym
-///     let third = at!();
-///     // error: unknown error
-///     //  --> src/main.rs:9
-/// }
-/// ```
-#[macro_export]
-macro_rules! at {
-    ($msg:expr) => {
-        $crate::ErrorContext {
-            msg: $msg.to_string(),
-            file: Some(file!().to_string()),
-            line: Some(line!()),
-            doc_link: None,
-            issues: vec![],
-            severity: $crate::Severity::Error,
-            metadata: vec![],
-        }
-    };
-    ($msg:expr, $severity:expr) => {
-        $crate::ErrorContext {
-            msg: $msg.to_string(),
-            file: Some(file!().to_string()),
-            line: Some(line!()),
-            doc_link: None,
-            issues: vec![],
-            severity: $severity,
-            metadata: vec![],
-        }
-    };
-    () => {
-        $crate::ErrorContext {
-            msg: "unknown error".to_string(),
-            file: Some(file!().to_string()),
-            line: Some(line!()),
-            doc_link: None,
-            issues: vec![],
-            severity: $crate::Severity::Error,
-            metadata: vec![],
-        }
-    };
-}
-
-/// `luhtwin::AnyError` is an horrible way to manage your errors
-/// it has a lists of contexts a source and a backtrace with item
-/// look at `luhtwin::ErrorContext` for more information on what
-/// type of metadata you can save and display in contexts
+/// # See also
 ///
-/// # Examples
-///
-/// ```rust
-/// use luhtwin::{AnyError, ErrorContext};
-///
-/// fn may_fail(value: i32) -> Result<(), AnyError> {
-///     if value % 2 == 0 {
-///         Ok(())
-///     } else {
-///         let mut err = AnyError::new("odd value error");
-///         err.add_context(ErrorContext::new("failed in may_fail"));
-///         Err(err)
-///     }
-/// }
-///
-/// fn main() {
-///     match may_fail(3) {
-///         Ok(_) => println!("success"),
-///         Err(e) => {
-///             let mut e = e;
-///             e.add_context(ErrorContext::new("while running main"));
-///             e.display_full(); // verbose output with contexts and backtrace
-///         }
-///     }
-/// }
-/// ```
+/// - [`ErrorContext`] — for attaching structured context metadata.
+/// - [`at!`] — for ergonomic error context construction.
+/// - [`AnyErrorBuilder`] - for ergonomic AnyError construction
 pub struct AnyError {
     contexts: Vec<ErrorContext>,
     source: Option<ErrorSource>,
@@ -296,7 +307,69 @@ pub struct AnyError {
     logged: std::sync::atomic::AtomicBool,
 }
 
+/// A specialized `Result` type that uses `AnyError` as its error variant.
+///
+/// `LuhTwin<T>` is a convenient alias for `Result<T, luhtwin::AnyError>`
+///
+/// # Example
+/// ---------------------------------------------------------------------------
+/// ```rust
+/// use luhtwin::{LuhTwin, anyerror};
+///
+/// fn do_something(flag: bool) -> LuhTwin<i32> {
+///     if flag {
+///         Ok(42)
+///     } else {
+///         Err(anyerror!("something went wrong").build())
+///     }
+/// }
+///
+/// let result = do_something(false);
+/// match result {
+///     Ok(val) => println!("Success: {}", val),
+///     Err(err) => eprintln!("Error: {}", err.display_pretty()),
+/// }
+/// ```
+/// ---------------------------------------------------------------------------
 pub type LuhTwin<T> = Result<T, AnyError>;
+
+/// A generic `Result` type that can hold any user-defined error type.
+///
+/// `BigTwin<T, E>` is simply a `Result<T, E>` alias, used to represent
+/// computations that may fail with a custom error `E`. Unlike `LuhTwin`,
+/// `BigTwin` does not automatically wrap errors into `AnyError`, allowing
+/// the use of domain-specific or third-party error types.
+///
+/// # Example
+/// ---------------------------------------------------------------------------
+/// ```rust
+/// use luhtwin::BigTwin;
+///
+/// #[derive(Debug)]
+/// struct MyError;
+///
+/// impl std::fmt::Display for MyError {
+///     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+///         write!(f, "my custom error")
+///     }
+/// }
+///
+/// impl std::error::Error for MyError {}
+///
+/// fn might_fail(flag: bool) -> BigTwin<i32, MyError> {
+///     if flag {
+///         Ok(100)
+///     } else {
+///         Err(MyError)
+///     }
+/// }
+///
+/// let result = might_fail(false);
+/// if let Err(e) = result {
+///     eprintln!("Failed with: {}", e);
+/// }
+/// ```
+/// ---------------------------------------------------------------------------
 pub type BigTwin<T, E> = Result<T, E>;
 
 impl fmt::Display for AnyError {
@@ -343,6 +416,7 @@ impl Error for AnyError {
 }
 
 impl AnyError {
+    /// Create a new AnyError
     pub fn new<E>(err: E) -> Self
     where
         E: Error + Send + Sync + 'static,
@@ -355,10 +429,12 @@ impl AnyError {
         }
     }
 
+    /// Marks the Error as logged
     pub fn mark_logged(&self) {
         self.logged.store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
+    /// Checks if the error is logged
     pub fn is_logged(&self) -> bool {
         self.logged.load(std::sync::atomic::Ordering::SeqCst)
     }
@@ -386,8 +462,11 @@ impl Error for ErrorSourceWrapper {
 }
 
 pub trait CloneableError: Error + Send + Sync {
+    /// Simple clone
     fn clone_box(&self) -> Box<dyn CloneableError>;
+    /// Converts into static error
     fn as_error(&self) -> &(dyn Error + 'static);
+    /// Converts into a boxed error 
     fn into_error_box(self: Box<Self>) -> Box<dyn Error + Send + Sync>;
 }
 
@@ -432,12 +511,11 @@ impl<T> ErrorClonableExt for T
 where
     T: Error + Send + Sync + 'static,
 {
+    /// Converts a non clonable error into a cloneable error
     fn make_clonable(&self) -> Box<dyn CloneableError> {
-        // If it's already a CloneableError, just clone it
         if let Some(clonable) = (self as &dyn std::any::Any).downcast_ref::<Box<dyn CloneableError>>() {
             return clonable.clone_box();
         }
-        // Otherwise, wrap it in NonCloneableWrapper
         Box::new(NonCloneableWrapper::new(self))
     }
 }
@@ -448,6 +526,22 @@ impl Clone for NonCloneableWrapper {
     }
 }
 
+/// A builder for creating `AnyError` instances.
+///
+/// # Example
+/// ---------------------------------------------------------------------------
+/// ```rust
+/// use luhtwin::{AnyErrorBuilder, Level};
+/// let err = AnyErrorBuilder::new("Failed to load configuration")
+///     .doc_link("https://example.com/docs/errors#config")
+///     .issues(vec!["CONFIG-101", "CONFIG-102"])
+///     .metadata("module", "config_loader")
+///     .severity(Level::Critical)
+///     .build();
+///
+/// eprintln!("{}", err.display_pretty());
+/// ```
+/// ---------------------------------------------------------------------------
 #[derive(Debug, Clone)]
 pub struct AnyErrorBuilder {
     ctx: ErrorContext,
@@ -455,6 +549,10 @@ pub struct AnyErrorBuilder {
 }
 
 impl AnyErrorBuilder {
+    /// Creates a new `AnyErrorBuilder` with a main error message.
+    ///
+    /// Automatically captures the current file and line number, and sets
+    /// the default severity to `Level::Error`.
     pub fn new(msg: impl Into<String>) -> Self {
         Self {
             ctx: ErrorContext {
@@ -463,18 +561,20 @@ impl AnyErrorBuilder {
                 line: Some(line!()),
                 doc_link: None,
                 issues: vec![],
-                metadata: vec![],
-                severity: Severity::Error,
+                metadata: HashMap::new(),
+                severity: Level::Error,
             },
             source: None,
         }
     }
 
+    /// Adds a documentation link to the error context.
     pub fn doc_link(mut self, link: impl Into<String>) -> Self {
         self.ctx.doc_link = Some(link.into());
         self
     }
 
+    /// Attaches a list of issue identifiers related to this error.
     pub fn issues<I, S>(mut self, issues: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -484,20 +584,23 @@ impl AnyErrorBuilder {
         self
     }
 
+    /// Adds arbitrary metadata as key-value pairs to the error context.
     pub fn metadata<K, V>(mut self, key: K, value: V) -> Self
     where
         K: Into<String>,
         V: fmt::Display,
     {
-        self.ctx.metadata.push((key.into(), value.to_string()));
+        self.ctx.metadata.insert(key.into(), value.to_string());
         self
     }
 
-    pub fn severity(mut self, severity: Severity) -> Self {
+    /// Sets the severity level of the error.
+    pub fn severity(mut self, severity: Level) -> Self {
         self.ctx.severity = severity;
         self
     }
 
+    /// Attaches a source error to this error.
     pub fn source<E>(mut self, err: E) -> Self
     where
         E:  Error + Send + Sync + 'static,
@@ -506,6 +609,7 @@ impl AnyErrorBuilder {
         self
     }
 
+    /// Finalizes the builder and returns an `AnyError`.
     pub fn build(self) -> AnyError {
         AnyError {
             contexts: vec![self.ctx],
@@ -520,13 +624,6 @@ impl AnyErrorBuilder {
             logged: std::sync::atomic::AtomicBool::new(false),
         }
     }
-}
-
-#[macro_export]
-macro_rules! anyerror {
-    ($msg:expr) => {
-        $crate::AnyErrorBuilder::new($msg)
-    };
 }
 
 impl From<std::io::Error> for AnyError {
@@ -548,19 +645,32 @@ impl From<std::string::FromUtf8Error> for AnyError {
 }
 
 impl AnyError {
+    /// Pushes a contexts to the `AnyError::contexts` vector
     pub fn with_context(mut self, ctx: ErrorContext) -> Self {
         self.contexts.push(ctx);
         self
     }
 
-    pub fn max_severity(&self) -> Severity {
+    /// Returns the max severity in the `AnyError::contexts` vector
+    pub fn max_severity(&self) -> Level {
         self.contexts
             .iter()
             .map(|c| c.severity)
             .max()
-            .unwrap_or(Severity::Error)
+            .unwrap_or(Level::Error)
     }
 
+    /// Returns the error in a compact log-friendly format.
+    ///
+    /// # Example
+    /// ---------------------------------------------------------------------------
+    /// ```rust
+    /// # use luhtwin::AnyErrorBuilder;
+    /// let err = AnyErrorBuilder::new("Something went wrong").build();
+    /// println!("{}", err.to_log_format());
+    /// // message="Something went wrong" severity=Error location="src/main.rs:10"
+    /// ```
+    /// ---------------------------------------------------------------------------
     pub fn to_log_format(&self) -> String {
         let mut parts = vec![];
         
@@ -585,6 +695,20 @@ impl AnyError {
         parts.join(" ")
     }
 
+    /// Returns a colorful, human-readable representation of the error.
+    ///
+    /// Uses ANSI color codes to highlight severity.
+    ///
+    /// # Example
+    /// ---------------------------------------------------------------------------
+    /// ```rust
+    /// # use luhtwin::AnyErrorBuilder;
+    /// let err = AnyErrorBuilder::new("Failed to connect").build();
+    /// println!("{}", err.display_pretty());
+    /// // ERROR error: Failed to connect
+    /// //   --> src/main.rs:12
+    /// ```
+    /// ---------------------------------------------------------------------------
     pub fn display_pretty(&self) -> String {
         const RED: &str = "\x1b[31m";
         const YELLOW: &str = "\x1b[33m";
@@ -597,10 +721,11 @@ impl AnyError {
         
         if let Some(ctx) = self.contexts.last() {
             let color = match ctx.severity {
-                Severity::Critical | Severity::Error => RED,
-                Severity::Warning => YELLOW,
-                Severity::Info => BLUE,
-                Severity::Debug => GRAY,
+                Level::Critical | Level::Error => RED,
+                Level::Warn => YELLOW,
+                Level::Info => BLUE,
+                Level::Debug => GRAY,
+                Level::Trace => BOLD,
             };
             
             result.push_str(&format!("{}{}error:{} {}{}\n", 
@@ -617,7 +742,7 @@ impl AnyError {
         
         if self.contexts.len() > 1 {
             result.push_str(&format!("\n{}context chain:{}\n", BOLD, RESET));
-            // Show from outermost to innermost (reverse order)
+            // show from outermost to innermost (reverse order)
             for (i, ctx) in self.contexts.iter().rev().enumerate() {
                 result.push_str(&format!("  {}. {}\n", i + 1, ctx.msg));
             }
@@ -630,6 +755,24 @@ impl AnyError {
         result
     }
 
+
+    /// Returns the contexts in a simple, plain-text format.
+    ///
+    /// # Example
+    /// ---------------------------------------------------------------------------
+    /// ```rust
+    /// # use luhtwin::AnyErrorBuilder;
+    /// let err = AnyErrorBuilder::new("Top level error")
+    ///     .doc_link("https://example.com/docs")
+    ///     .issues(vec!["ISSUE-101"])
+    ///     .build();
+    ///
+    /// println!("{}", err.display_contexts());
+    /// // 1: Top level error
+    /// //     [doc: https://example.com/docs]
+    /// //     [issues: ISSUE-101]
+    /// ```
+    /// ---------------------------------------------------------------------------
     pub fn display_contexts(&self) -> String {
         let mut result = String::new();
 
@@ -660,6 +803,23 @@ impl AnyError {
         result
     }
 
+    /// Returns the contexts as a tree structure.
+    ///
+    /// # Example
+    /// ---------------------------------------------------------------------------
+    /// ```rust
+    /// use luhtwin::{AnyErrorBuilder, at};
+    /// let err = AnyErrorBuilder::new("Outer error")
+    ///     .build()
+    ///     .with_context(at!("inner error"));
+    ///
+    /// println!("{}", err.display_contexts_tree());
+    /// // └─ Outer error
+    /// //     at src/main.rs:10
+    /// // ├─ Inner error
+    /// //     at src/main.rs:9
+    /// ```
+    /// ---------------------------------------------------------------------------
     pub fn display_contexts_tree(&self) -> String {
         let mut result = String::new();
         let last_idx = self.contexts.len().saturating_sub(1);
@@ -691,10 +851,40 @@ impl AnyError {
         result
     }
 
+    /// Prints out the backtrace will say disabled if RUST_BACKTRACE != 1
     pub fn display_backtrace(&self) -> String {
         format!("{}", self.backtrace)
     }
 
+    /// Displays the full error report, including contexts, source errors, and backtrace.
+    ///
+    /// # Example
+    /// ---------------------------------------------------------------------------
+    /// ```rust
+    /// # use luhtwin::AnyErrorBuilder;
+    /// let root = AnyErrorBuilder::new("Root failure").build();
+    /// let err = AnyErrorBuilder::new("Higher-level failure")
+    ///     .source(root)
+    ///     .build();
+    ///
+    /// println!("{}", err.display_full());
+    /// // === error report ===
+    /// // severity: Error
+    /// // message: Higher-level failure
+    /// //
+    /// // context chain:
+    /// // └─ Higher-level failure
+    /// //     at src/main.rs:10
+    /// //
+    /// // root cause: Root failure
+    /// //
+    /// // error chain:
+    /// //  0: Root failure
+    /// //
+    /// // backtrace:
+    /// // <backtrace output>
+    /// ```
+    /// ---------------------------------------------------------------------------
     pub fn display_full(&self) -> String {
         let mut result = String::new();
         
@@ -727,6 +917,7 @@ impl AnyError {
 }
 
 impl AnyError {
+    /// Returns back the root cause
     pub fn root_cause(&self) -> &(dyn Error + 'static) {
         let mut source: &(dyn Error + 'static) = self;
         while let Some(s) = source.source() {
@@ -735,16 +926,21 @@ impl AnyError {
         source
     }
 
+    /// Iterate over all the contexts in an AnyError
     pub fn iter_sources(&self) -> impl Iterator<Item = &(dyn Error + 'static)> + '_ {
         std::iter::successors(Some(self as &(dyn Error + 'static)), |&e| e.source())
     }
 }
 
+/// A extension trait which allows context to be added to any errors/
+/// and return back a `luhtwin::LuhTwin` for more error handling!!!
 pub trait Context<T> {
+    /// Add a context to an arbitrary error type and return back a `luhtwin::LuhTwin`
     fn context<C>(self, msg: C) -> LuhTwin<T> 
     where
         C: fmt::Display;
 
+    /// Add a formatted context to an arbitrary error type and return back a `luhtwin::LuhTwin`
     fn with_context<C, F>(self, f: F) -> LuhTwin<T>
     where
         C: fmt::Display,
@@ -755,14 +951,14 @@ impl<T, E> Context<T> for BigTwin<T, E>
 where
     E: Error + Send + Sync + 'static,
 {
-    fn context<C>(self, msg: C) -> Result<T, AnyError>
+    fn context<C>(self, msg: C) -> LuhTwin<T>
     where
         C: fmt::Display,
     {
         self.map_err(|e| AnyError::new(e).with_context(at!(msg)))
     }
 
-    fn with_context<C, F>(self, f: F) -> Result<T, AnyError>
+    fn with_context<C, F>(self, f: F) -> LuhTwin<T>
     where
         C: fmt::Display,
         F: FnOnce() -> C,
@@ -771,7 +967,23 @@ where
     }
 }
 
+/// Extension trait for adding contextual information to errors by mapping them.
 pub trait MapErrExt<T> {
+    /// Maps the error and adds additional context, returning a `LuhTwin<T>`.
+    ///
+    /// # Example
+    /// ---------------------------------------------------------------------------
+    /// ```ignore
+    /// use luhtwin::{BigTwin, MapErrExt, LuhTwin};
+    /// fn might_fail() -> BigTwin<i32, std::io::Error> { unimplemented!() }
+    ///
+    /// let result: LuhTwin<i32> = might_fail()
+    ///     .map_err_context(|| "Failed during file read");
+    ///
+    /// // if an error occurs it will be wrapped with a context:
+    /// // AnyError { contexts: [ "Failed during file read", "<original error>" ], ... }
+    /// ```
+    /// ---------------------------------------------------------------------------
     fn map_err_context<F, C>(self, f: F) -> LuhTwin<T>
     where
         F: FnOnce() -> C,
@@ -794,11 +1006,15 @@ where
     }
 }
 
+/// Extension trait for logging errors conveniently.
 pub trait LogError<T> {
+    /// Logs the error using the default logging mechanism.
     fn log_error(self) -> Self;
     
+    /// Logs the error with a prefix message
     fn log_error_with(self, prefix: &str) -> Self;
     
+    /// Logs and then marks it as logged so will not be logged again unless explicitly
     fn log_once(self) -> Self;
 }
 
@@ -828,6 +1044,104 @@ impl<T> LogError<T> for LuhTwin<T> {
     }
 }
 
+/// Creates a new `AnyErrorBuilder` with the given message.
+///
+/// This macro is a shorthand for `AnyErrorBuilder::new`.
+///
+/// # Example
+/// ---------------------------------------------------------------------------
+/// ```rust
+/// use luhtwin::anyerror;
+/// let err = anyerror!("Something went wrong")
+///     .doc_link("https://docs.example.com/error")
+///     .build();
+/// ```
+/// ---------------------------------------------------------------------------
+#[macro_export]
+macro_rules! anyerror {
+    ($msg:expr) => {
+        $crate::AnyErrorBuilder::new($msg)
+    };
+}
+
+/// Creates a new `ErrorContext` at the current file and line.
+///
+/// Can optionally specify a severity level. If no severity is provided,
+/// defaults to `Level::Error`.
+///
+/// # Examples
+/// ---------------------------------------------------------------------------
+/// Basic usage:
+/// ```rust
+/// use luhtwin::at;
+/// let ctx = at!("A simple error context");
+/// ```
+///
+/// With a custom severity:
+/// ```rust
+/// use luhtwin::{at, luhlog::Level};
+/// let ctx = at!("A warning context", Level::Warn);
+/// ```
+///
+/// Using the default context (no message):
+/// ```rust
+/// use luhtwin::at;
+/// let ctx = at!();
+/// assert_eq!(ctx.msg, "unknown error");
+/// ```
+/// ---------------------------------------------------------------------------
+#[macro_export]
+macro_rules! at {
+    ($msg:expr) => {
+        $crate::ErrorContext {
+            msg: $msg.to_string(),
+            file: Some(file!().to_string()),
+            line: Some(line!()),
+            doc_link: None,
+            issues: vec![],
+            severity: $crate::luhlog::Level::Error,
+            metadata: std::collections::HashMap::new(),
+        }
+    };
+    ($msg:expr, $severity:expr) => {
+        $crate::ErrorContext {
+            msg: $msg.to_string(),
+            file: Some(file!().to_string()),
+            line: Some(line!()),
+            doc_link: None,
+            issues: vec![],
+            severity: $severity,
+            metadata: std::collections::HashMap::new(),
+        }
+    };
+    () => {
+        $crate::ErrorContext {
+            msg: "unknown error".to_string(),
+            file: Some(file!().to_string()),
+            line: Some(line!()),
+            doc_link: None,
+            issues: vec![],
+            severity: $crate::luhlog::Level::Error,
+            metadata: std::collections::HashMap::new(),
+        }
+    };
+}
+
+
+/// Immediately returns an `Err(AnyError)` from a function.
+///
+/// Accepts formatting arguments like `format!` and converts them into an
+/// `AnyError` with a generic `std::io::Error` as the source.
+///
+/// # Example
+/// ---------------------------------------------------------------------------
+/// ```rust
+/// use luhtwin::{bail, LuhTwin};
+/// fn do_something() -> LuhTwin<()> {
+///     bail!("This operation failed with code {}", 42);
+/// }
+/// ```
+/// ---------------------------------------------------------------------------
 #[macro_export]
 macro_rules! bail {
     ($($arg:tt)*) => {
@@ -838,6 +1152,25 @@ macro_rules! bail {
     };
 }
 
+/// Ensures a condition is true, otherwise returns an error.
+///
+/// This is a shorthand for:
+/// ```ignore
+/// if !$cond {
+///     bail!(...);
+/// }
+/// ```
+///
+/// # Example
+/// ---------------------------------------------------------------------------
+/// ```rust
+/// use luhtwin::{ensure, LuhTwin};
+/// fn check_value(x: i32) -> LuhTwin<()> {
+///     ensure!(x > 0, "x must be positive, got {}", x);
+///     Ok(())
+/// }
+/// ```
+/// ---------------------------------------------------------------------------
 #[macro_export]
 macro_rules! ensure {
     ($cond:expr, $($arg:tt)*) => {
@@ -847,506 +1180,10 @@ macro_rules! ensure {
     };
 }
 
+/// Adds a context to a result or error-like type.
 #[macro_export]
 macro_rules! context {
     ($res:expr, $msg:expr) => {
         $res.with_context(|| $msg)
     };
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io;
-    use std::error::Error as StdError;
-
-    fn root_cause<'a>(err: &'a (dyn StdError + 'static)) -> &'a (dyn StdError + 'static) {
-        let mut current = err;
-        while let Some(source) = current.source() {
-            current = source;
-        }
-        current
-    }
-
-    #[test]
-    fn context_adds_message_and_preserves_source() {
-        let err: Result<(), io::Error> = Err(io::Error::new(io::ErrorKind::Other, "file missing"));
-        let result = err.context("reading config");
-
-        assert!(result.is_err());
-        let e = result.unwrap_err();
-
-        assert_eq!(e.to_string(), "reading config");
-
-        assert_eq!(e.source().unwrap().to_string(), "file missing");
-    }
-
-    #[test]
-    fn chained_context_produces_nested_sources() {
-        let err: Result<(), io::Error> = Err(io::Error::new(io::ErrorKind::Other, "root"));
-        let result = err
-            .context("loading data")
-            .context("initializing system");
-
-        assert!(result.is_err());
-        let e = result.unwrap_err();
-
-        assert_eq!(e.to_string(), "initializing system");
-
-        let src1 = e.source().unwrap();
-        assert_eq!(src1.to_string(), "loading data");
-
-        let src2 = src1.source().unwrap();
-        assert_eq!(src2.to_string(), "root");
-    }
-
-    #[test]
-    fn context_chain_root_cause_is_original_error() {
-        let err: Result<(), io::Error> = Err(io::Error::new(io::ErrorKind::Other, "disk full"));
-        let result = err
-            .context("saving file")
-            .context("processing upload")
-            .context("user request");
-
-        let e = result.unwrap_err();
-        let cause = root_cause(&e);
-        assert_eq!(cause.to_string(), "disk full");
-    }
-
-    #[test]
-    fn map_err_produces_combined_message() {
-        let err: Result<(), io::Error> = Err(io::Error::new(io::ErrorKind::Other, "low memory"));
-        let result = err.map_err_context(|| "while running benchmark");
-        // let result = err.map_err(|e| format!("while running benchmark: {}", e));
-
-        assert!(result.is_err());
-        let e = result.unwrap_err();
-        let msg = e.to_string();
-        
-        assert!(msg.contains("while running benchmark"));
-        assert!(msg.contains("low memory"));
-    }
-
-    #[test]
-    fn bail_macro_returns_early_with_message() {
-        fn fail() -> LuhTwin<()> {
-            bail!("fatal error occurred");
-        }
-
-        let result = fail();
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().to_string(), "fatal error occurred");
-    }
-
-    #[test]
-    fn bail_macro_with_format_args() {
-        fn fail_with_data(x: i32) -> LuhTwin<()> {
-            bail!("invalid number: {}", x);
-        }
-
-        let result = fail_with_data(99);
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().to_string(), "invalid number: 99");
-    }
-
-    #[test]
-    fn ensure_macro_allows_valid_condition() {
-        fn check_positive(x: i32) -> LuhTwin<()> {
-            ensure!(x > 0, "expected positive, got {}", x);
-            Ok(())
-        }
-
-        let ok = check_positive(10);
-        assert!(ok.is_ok());
-    }
-
-    #[test]
-    fn ensure_macro_bails_on_failure() {
-        fn check_positive(x: i32) -> LuhTwin<()> {
-            ensure!(x > 0, "expected positive, got {}", x);
-            Ok(())
-        }
-
-        let err = check_positive(-5);
-        
-        assert!(err.is_err());
-        assert_eq!(err.unwrap_err().to_string(), "expected positive, got -5");
-    }
-
-    #[test]
-    fn context_and_macros_mix_well() {
-        fn process_file() -> LuhTwin<()> {
-            let file: Result<(), io::Error> = Err(io::Error::new(io::ErrorKind::Other, "IO fail"));
-            file.context("opening file")?;
-            Ok(())
-        }
-
-        let result = process_file();
-        assert!(result.is_err());
-        let e = result.unwrap_err();
-        assert_eq!(e.to_string(), "opening file");
-        assert_eq!(e.source().unwrap().to_string(), "IO fail");
-    }
-
-    #[test]
-    fn ensure_and_bail_can_coexist() {
-        fn maybe_fail(x: i32) -> LuhTwin<()> {
-            ensure!(x != 0, "zero not allowed");
-            if x == 42 {
-                bail!("meaning of life error");
-            }
-            Ok(())
-        }
-
-        let zero = maybe_fail(0);
-        assert!(zero.is_err());
-        assert_eq!(zero.unwrap_err().to_string(), "zero not allowed");
-
-        let meaning = maybe_fail(42);
-        assert!(meaning.is_err());
-        assert_eq!(meaning.unwrap_err().to_string(), "meaning of life error");
-
-        let ok = maybe_fail(7);
-        assert!(ok.is_ok());
-    }
-
-    use std::thread;
-    use std::sync::Arc;
-
-    #[test]
-    fn anyerror_is_send_and_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<AnyError>();
-    }
-
-    #[test]
-    fn anyerror_can_be_sent_across_threads() {
-        let err = AnyError::new(std::io::Error::new(std::io::ErrorKind::Other, "thread error"))
-            .with_context(at!("from worker thread"));
-
-        let shared = Arc::new(err);
-        let thread_err = shared.clone();
-
-        let handle = thread::spawn(move || {
-            assert_eq!(thread_err.to_string(), "from worker thread");
-            assert!(thread_err.source().unwrap().to_string().contains("thread error"));
-        });
-
-        handle.join().expect("thread should finish");
-    }
-
-    #[test]
-    fn anyerror_without_message_defaults_to_unknown() {
-        let e = AnyError { contexts: vec!(), source: None, backtrace: Backtrace::capture(), logged: false.into() };
-        assert_eq!(e.to_string(), "unknown error");
-        assert!(e.source().is_none());
-    }
-
-    #[test]
-    fn anyerror_with_source_but_no_message_displays_source() {
-        let inner = std::io::Error::new(std::io::ErrorKind::Other, "inner cause");
-        let e = AnyError::new(inner);
-        assert_eq!(e.to_string(), "inner cause");
-    }
-
-    #[derive(Debug)]
-    struct CustomErr;
-    impl fmt::Display for CustomErr {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "custom error occurred")
-        }
-    }
-    impl Error for CustomErr {}
-
-    #[test]
-    fn context_works_with_custom_non_io_error() {
-        let err: Result<(), CustomErr> = Err(CustomErr);
-        let result = err.context("running plugin");
-        let e = result.unwrap_err();
-        assert_eq!(e.to_string(), "running plugin");
-        assert_eq!(e.source().unwrap().to_string(), "custom error occurred");
-    }
-
-    #[test]
-    fn display_shows_top_message_only() {
-        let err: Result<(), io::Error> = Err(io::Error::new(io::ErrorKind::Other, "root failure"));
-        let e = err.context("loading config").context("starting system").unwrap_err();
-        assert_eq!(e.to_string(), "starting system");
-    }
-
-    #[test]
-    fn root_cause_finds_deepest_source() {
-        let err: Result<(), io::Error> = Err(io::Error::new(io::ErrorKind::Other, "deep root"));
-        let result = err.context("layer 1").context("layer 2").context("layer 3");
-        let e = result.unwrap_err();
-        let cause = root_cause(&e);
-        assert_eq!(cause.to_string(), "deep root");
-    }
-
-    #[test]
-    fn map_err_context_handles_empty_message() {
-        let err: Result<(), io::Error> = Err(io::Error::new(io::ErrorKind::Other, "missing data"));
-        let result = err.map_err_context(|| "");
-        let e = result.unwrap_err();
-        assert!(e.to_string().contains("missing data"));
-    }
-
-    #[test]
-    fn with_context_closure_is_lazy() {
-        let mut called = false;
-        let err: Result<(), io::Error> = Ok(());
-        let _ = err.with_context(|| {
-            called = true;
-            "this should not be called"
-        });
-        assert!(!called, "closure should not be called on Ok");
-    }
-    
-    #[test]
-    fn with_context_closure_is_called_on_err() {
-        let mut called = false;
-        let err: Result<(), io::Error> = Err(io::Error::new(io::ErrorKind::Other, "fail"));
-        let _ = err.with_context(|| {
-            called = true;
-            "context added"
-        });
-        assert!(called, "closure should be called on Err");
-    }
-    
-    #[test]
-    fn max_severity_returns_highest() {
-        let err = AnyError::new(io::Error::new(io::ErrorKind::Other, "test"))
-            .with_context(at!("debug msg", Severity::Debug))
-            .with_context(at!("critical msg", Severity::Critical))
-            .with_context(at!("info msg", Severity::Info));
-        
-        assert_eq!(err.max_severity(), Severity::Critical);
-    }
-    
-    #[test]
-    fn max_severity_defaults_to_error() {
-        let err = AnyError::new(io::Error::new(io::ErrorKind::Other, "test"));
-        assert_eq!(err.max_severity(), Severity::Error);
-    }
-    
-    #[test]
-    fn error_context_builder_methods() {
-        let ctx = at!("test error")
-            .with_doc_link("https://docs.example.com/error")
-            .with_issues(vec!["#123", "#456"])
-            .with_severity(Severity::Warning)
-            .with_metadata("user_id", 42)
-            .with_metadata("request_id", "abc-123");
-        
-        assert_eq!(ctx.doc_link, Some("https://docs.example.com/error".to_string()));
-        assert_eq!(ctx.issues.len(), 2);
-        assert_eq!(ctx.severity, Severity::Warning);
-        assert_eq!(ctx.metadata.len(), 2);
-    }
-    
-    #[test]
-    fn to_log_format_produces_structured_output() {
-        let err = AnyError::new(io::Error::new(io::ErrorKind::Other, "source error"))
-            .with_context(at!("test message"));
-        
-        let log = err.to_log_format();
-        assert!(log.contains("message=\"test message\""));
-        assert!(log.contains("severity=ERROR"));
-        assert!(log.contains("source=\"source error\""));
-    }
-    
-    #[test]
-    fn to_log_format_escapes_quotes() {
-        let err = AnyError::new(io::Error::new(io::ErrorKind::Other, "error with \"quotes\""))
-            .with_context(at!("message with \"quotes\""));
-        
-        let log = err.to_log_format();
-        assert!(log.contains("\\\""));
-    }
-    
-    #[test]
-    fn iter_sources_traverses_entire_chain() {
-        let err: Result<(), io::Error> = Err(io::Error::new(io::ErrorKind::Other, "root"));
-        let e = err.context("layer1").context("layer2").unwrap_err();
-        
-        let sources: Vec<String> = e.iter_sources().map(|s| s.to_string()).collect();
-        assert_eq!(sources.len(), 3);
-        assert_eq!(sources[0], "layer2");
-        assert_eq!(sources[1], "layer1");
-        assert_eq!(sources[2], "root");
-    }
-    
-    #[test]
-    fn root_cause_on_anyerror_directly() {
-        let err: Result<(), io::Error> = Err(io::Error::new(io::ErrorKind::Other, "original"));
-        let e = err.context("wrapper").unwrap_err();
-        
-        let root = e.root_cause();
-        assert_eq!(root.to_string(), "original");
-    }
-    
-    #[test]
-    fn display_contexts_shows_all_contexts() {
-        let err = AnyError::new(io::Error::new(io::ErrorKind::Other, "source"))
-            .with_context(at!("first context"))
-            .with_context(at!("second context"));
-        
-        let display = err.display_contexts();
-        assert!(display.contains("1: second context"));
-        assert!(display.contains("-> 2: first context"));
-    }
-    
-    #[test]
-    fn display_contexts_includes_doc_links_and_issues() {
-        let ctx = at!("error with metadata")
-            .with_doc_link("https://example.com")
-            .with_issues(vec!["issue-1", "issue-2"]);
-        
-        let err = AnyError::new(io::Error::new(io::ErrorKind::Other, "test"))
-            .with_context(ctx);
-        
-        let display = err.display_contexts();
-        assert!(display.contains("[doc: https://example.com]"));
-        assert!(display.contains("[issues: issue-1, issue-2]"));
-    }
-    
-    #[test]
-    fn display_contexts_tree_formats_correctly() {
-        let err = AnyError::new(io::Error::new(io::ErrorKind::Other, "source"))
-            .with_context(at!("first"))
-            .with_context(at!("second"));
-        
-        let tree = err.display_contexts_tree();
-        println!("{}", tree);
-        assert!(tree.contains("├─ second"));
-
-        assert!(tree.contains("└─ first"));
-    }
-    
-    #[test]
-    fn log_error_trait_does_not_consume_result() {
-        let err: LuhTwin<()> = Err(AnyError::new(io::Error::new(io::ErrorKind::Other, "test")));
-        let result = err.log_error();
-        assert!(result.is_err());
-    }
-    
-    #[test]
-    fn log_once_marks_error_as_logged() {
-        let err = AnyError::new(io::Error::new(io::ErrorKind::Other, "test"));
-        assert!(!err.is_logged());
-        
-        let result: LuhTwin<()> = Err(err);
-        let _ = result.log_once();
-    }
-    
-    #[test]
-    fn multiple_contexts_preserve_order() {
-        let err = AnyError::new(io::Error::new(io::ErrorKind::Other, "root"))
-            .with_context(at!("first"))
-            .with_context(at!("second"))
-            .with_context(at!("third"));
-        
-        assert_eq!(err.contexts.len(), 3);
-        assert_eq!(err.contexts[0].msg, "first");
-        assert_eq!(err.contexts[1].msg, "second");
-        assert_eq!(err.contexts[2].msg, "third");
-    }
-    
-    #[test]
-    fn from_implementations_work() {
-        let io_err = io::Error::new(io::ErrorKind::Other, "io");
-        let any_err: AnyError = io_err.into();
-        assert!(any_err.source().is_some());
-        
-        let fmt_err = std::fmt::Error;
-        let any_err: AnyError = fmt_err.into();
-        assert!(any_err.source().is_some());
-    }
-    
-    #[test]
-    fn at_macro_with_no_args() {
-        let ctx = at!();
-        assert_eq!(ctx.msg, "unknown error");
-        assert!(ctx.file.is_some());
-        assert!(ctx.line.is_some());
-    }
-    
-    #[test]
-    fn ensure_macro_with_complex_conditions() {
-        fn validate(x: i32, y: i32) -> LuhTwin<()> {
-            ensure!(x > 0 && y > 0, "both values must be positive: x={}, y={}", x, y);
-            ensure!(x < y, "x must be less than y: {} >= {}", x, y);
-            Ok(())
-        }
-        
-        assert!(validate(5, 10).is_ok());
-        assert!(validate(-1, 10).is_err());
-        assert!(validate(10, 5).is_err());
-    }
-    
-    #[test]
-    fn print_error_formats_demonstration() {
-        println!("\n=== ERROR FORMAT DEMONSTRATION ===\n");
-        
-        let err: Result<(), io::Error> = Err(io::Error::new(io::ErrorKind::NotFound, "config.json not found"));
-        let err_with_metadata = err
-            .context("failed to load configuration")
-            .unwrap_err()
-            .with_context(
-                at!("application startup failed", Severity::Critical)
-                    .with_doc_link("https://docs.example.com/startup-errors")
-                    .with_issues(vec!["#123", "#456"])
-                    .with_metadata("version", "1.0.0")
-                    .with_metadata("environment", "production")
-            );
-        
-        println!("1. DISPLAY (to_string):");
-        println!("{}\n", err_with_metadata);
-        
-        println!("2. DISPLAY_PRETTY:");
-        println!("{}\n", err_with_metadata.display_pretty());
-        
-        println!("3. DISPLAY_CONTEXTS:");
-        println!("{}\n", err_with_metadata.display_contexts());
-        
-        println!("4. DISPLAY_CONTEXTS_TREE:");
-        println!("{}\n", err_with_metadata.display_contexts_tree());
-        
-        println!("5. TO_LOG_FORMAT:");
-        println!("{}\n", err_with_metadata.to_log_format());
-        
-        println!("6. DISPLAY_FULL:");
-        println!("{}\n", err_with_metadata.display_full());
-        
-        println!("=== END DEMONSTRATION ===\n");
-    }
-    
-    #[test]
-    fn severity_display_formats() {
-        assert_eq!(Severity::Debug.to_string(), "DEBUG");
-        assert_eq!(Severity::Info.to_string(), "INFO");
-        assert_eq!(Severity::Warning.to_string(), "WARN");
-        assert_eq!(Severity::Error.to_string(), "ERROR");
-        assert_eq!(Severity::Critical.to_string(), "CRIT");
-    }
-    
-    #[test]
-    fn error_context_display_with_all_fields() {
-        let ctx = ErrorContext {
-            msg: "test error".to_string(),
-            file: Some("main.rs".to_string()),
-            line: Some(42),
-            doc_link: Some("https://example.com/docs".to_string()),
-            issues: vec!["issue-1".to_string(), "issue-2".to_string()],
-            metadata: vec![],
-            severity: Severity::Error,
-        };
-        
-        let display = format!("{}", ctx);
-        assert!(display.contains("test error"));
-        assert!(display.contains("main.rs:42"));
-        assert!(display.contains("https://example.com/docs"));
-        assert!(display.contains("issue-1"));
-        assert!(display.contains("issue-2"));
-    }
 }

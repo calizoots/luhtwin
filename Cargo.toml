@@ -9,3 +9,4 @@ license-file = "LICENSE"
 repository = "https://github.com/calizoots/luhtwin"
 
 [dependencies]
+luhlog = { version = "0.0.3" }
