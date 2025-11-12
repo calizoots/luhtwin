@@ -58,7 +58,7 @@ Choose the right format for your use case:
 Add `luhtwin` to your `Cargo.toml`:
 ```toml
 [dependencies]
-luhtwin = "0.1.0"
+luhtwin = "0.0.4"
 ```
 
 ### Basic Error Creation
