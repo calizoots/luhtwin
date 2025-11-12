@@ -1,3 +1,9 @@
+//! [![github]](https://github.com/calizoots/luhtwin)&ensp;[![crates-io]](https://crates.io/crates/luhtwin)&ensp;[![docs-rs]](https://docs.rs/luhtwin)
+//!
+//! [github]: https://img.shields.io/badge/github-calizoots/anyhow-8da0cb?style=for-the-badge&labelColor=555555&logo=github
+//! [crates-io]: https://img.shields.io/crates/v/luhtwin.svg?style=for-the-badge&color=fc8d62&logo=rust
+//! [docs-rs]: https://img.shields.io/badge/docs.rs-luhtwin-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs
+//!
 //! # luhtwin - Horrible Error Handling for Rust
 //!
 //! `luhtwin` provides a horrible, non-ergonomic error handling system that emphasizes
