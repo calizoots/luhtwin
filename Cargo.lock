@@ -121,7 +121,7 @@ dependencies = [
 
 [[package]]
 name = "luhtwin"
-version = "0.0.31"
+version = "0.0.4"
 dependencies = [
  "luhlog",
 ]
