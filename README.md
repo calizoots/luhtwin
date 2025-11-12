@@ -1,62 +1,148 @@
-# LuhTwin
+# luhtwin
 
-[<img alt="github" src="https://img.shields.io/badge/github-calizoots/luhtwin-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/calizoots/luhtwin)
-[<img alt="crates.io" src="https://img.shields.io/crates/v/luhtwin.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/luhtwin)
-[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-luhtwin-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/luhtwin)
+> Horrible Error Handling for Rust
 
-A horrible Rust library for managing errors.
+`luhtwin` provides a horrible, non-ergonomic error handling system that emphasizes **context accumulation**, **structured diagnostics**, and **flexible formatting**. Built around the `AnyError` type, it allows you to wrap any error with rich metadata and progressively add context as errors bubble up through your application.
 
-Dont get comfortable with this library... in dev stages it will be prone to changes to api
-<br>
-Supports context chains, severity levels, strucutred metadata, backtraces, and pretty printing. 
-<br>
-Designed to complicate your Error experience in Rust
-<br>
-made by **yours truely calizoots** <3
+## Core Concepts
 
-## Example
+- **`AnyError`** — The main error container that wraps any `Error` type with context chains
+- **`ErrorContext`** — Structured metadata including messages, file/line info, docs, and severity
+- **`AnyErrorBuilder`** — Builder for constructing AnyErrors
+- **`LuhTwin<T>`** — Type alias for `Result<T, AnyError>`, the primary result type
 
-these are just some basic examples will share more with time still in early stages
+## Features
 
+### 🔗 Context Chaining
+Add contextual information at each layer of your application:
 ```rust
-use luhtwin::{ensure, LuhTwin};
+use luhtwin::{LuhTwin, at};
 
-fn other_test(a: u32, b: u32) -> u32 {
-    return a + b
-}
-
-fn main() -> LuhTwin<()> {
-    let x = other_test(9, 10);
-
-    ensure!(x == 10, "critical error");
-
-    Ok(())
+fn read_config() -> LuhTwin<String> {
+    std::fs::read_to_string("config.toml")
+        .map_err(|e| e.into())
+        .map_err(|e: luhtwin::AnyError| e.with_context(at!("Failed to read config")))
 }
 ```
 
+### 📝 Error Metadata
+Attach documentation links, issue trackers, custom metadata, and severity levels:
 ```rust
-use luhtwin::{bail, LuhTwin};
+use luhtwin::{anyerror, Level};
 
-fn main() -> LuhTwin<()> {
-    bail!("bailing immediately");
+let err = anyerror!("Database connection timeout")
+    .doc_link("https://docs.example.com/db-errors#timeout")
+    .issues(["DB-101", "DB-205"])
+    .metadata("host", "localhost:5432")
+    .metadata("retry_count", 3)
+    .severity(Level::Critical)
+    .build();
+```
+
+### Multiple Display Formats
+Choose the right format for your use case:
+
+- `display_pretty()` — Colorful terminal output
+- `display_full()` — Complete diagnostic report with backtrace
+- `display_contexts_tree()` — Hierarchical context visualization
+- `to_log_format()` — Structured logging format
+
+## Quick Start
+
+### Installation
+
+Add `luhtwin` to your `Cargo.toml`:
+```toml
+[dependencies]
+luhtwin = "0.1.0"
+```
+
+### Basic Error Creation
+```rust
+use luhtwin::{anyerror, at, LuhTwin};
+
+fn might_fail(flag: bool) -> LuhTwin<i32> {
+    if flag {
+        Ok(42)
+    } else {
+        Err(anyerror!("Operation failed").build())
+    }
 }
 ```
 
+### Adding Context to Existing Errors
 ```rust
-use luhtwin::{anyerror, at, LuhTwin, Severity};
+use luhtwin::{Context, LuhTwin};
 
-fn main() -> LuhTwin<()> {
-    println!("Hello, world!");
-
-    let err = anyerror!("critical bine")
-        .doc_link("http://bine.com/docs/criticalbine")
-        .issues(vec!("#103", "#104"))
-        .severity(Severity::Critical)
-        .build();
-
-    let first = at!();
-    println!("{}", first);
-
-    Err(err)
+fn parse_file(path: &str) -> LuhTwin<String> {
+    let content = std::fs::read_to_string(path)
+        .context(format!("Failed to read file: {}", path))?;
+    Ok(content)
 }
 ```
+
+### Working with Context Chains
+```rust
+use luhtwin::{at, anyerror, LuhTwin};
+
+fn inner() -> LuhTwin<()> {
+    Err(anyerror!("Inner error").build())
+}
+
+fn middle() -> LuhTwin<()> {
+    inner().map_err(|e| e.with_context(at!("Middle layer failed")))
+}
+
+fn outer() -> LuhTwin<()> {
+    middle().map_err(|e| e.with_context(at!("Outer operation failed")))
+}
+
+// Error will contain all three contexts when displayed
+```
+
+## Macros
+
+- `at!` — Create an `ErrorContext` at the current file/line
+- `anyerror!` — Create an `AnyErrorBuilder`
+- `bail!` — Return early with an error
+- `ensure!` — Assert a condition or return an error
+- `context!` — Add context to a result
+
+## Extension Traits
+
+- `Context` — Add context to any `Result<T, E>` where `E: Error`
+- `MapErrExt` — Map errors with additional context
+- `LogError` — Convenient error logging methods
+
+## Error Display Examples
+
+### Pretty Display (for terminals)
+```text
+ERROR error: Failed to connect to database
+  --> src/db.rs:45
+
+context chain:
+  1. Failed to connect to database
+  2. Network timeout occurred
+
+caused by: Connection refused (os error 111)
+```
+
+### Tree Display (hierarchical contexts)
+```text
+└─ Failed to connect to database
+    at src/db.rs:45
+    doc: https://docs.example.com/db-errors
+    issue: DB-101
+├─ Network timeout occurred
+    at src/network.rs:102
+```
+
+### Log Format (structured logging)
+```text
+message="Failed to connect to database" severity=Critical location="src/db.rs:45" source="Connection refused"
+```
+
+---
+
+> made with love s.c - 2025 :3
