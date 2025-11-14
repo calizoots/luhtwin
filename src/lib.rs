@@ -1156,6 +1156,17 @@ macro_rules! anyerror {
 /// ---------------------------------------------------------------------------
 #[macro_export]
 macro_rules! at {
+    () => {
+        $crate::ErrorContext {
+            msg: "unknown error".to_string(),
+            file: Some(file!().to_string()),
+            line: Some(line!()),
+            doc_link: None,
+            issues: vec![],
+            severity: $crate::luhlog::Level::Error,
+            metadata: std::collections::HashMap::new(),
+        }
+    };
     ($msg:expr) => {
         $crate::ErrorContext {
             msg: $msg.to_string(),
@@ -1178,9 +1189,9 @@ macro_rules! at {
             metadata: std::collections::HashMap::new(),
         }
     };
-    () => {
+    ($fmt:literal, $($arg:expr),+ $(,)?) => {
         $crate::ErrorContext {
-            msg: "unknown error".to_string(),
+            msg: format!($fmt, $($arg),+),
             file: Some(file!().to_string()),
             line: Some(line!()),
             doc_link: None,
@@ -1189,8 +1200,18 @@ macro_rules! at {
             metadata: std::collections::HashMap::new(),
         }
     };
+    ($fmt:literal, $($arg:expr),+, $severity:expr $(,)?) => {
+        $crate::ErrorContext {
+            msg: format!($fmt, $($arg),+),
+            file: Some(file!().to_string()),
+            line: Some(line!()),
+            doc_link: None,
+            issues: vec![],
+            severity: $severity,
+            metadata: std::collections::HashMap::new(),
+        }
+    };
 }
-
 
 /// Immediately returns an `Err(AnyError)` from a function.
 ///
