@@ -1141,19 +1141,28 @@ macro_rules! anyerror {
 /// let ctx = at!("A simple error context");
 /// ```
 ///
-/// With a custom severity:
+/// ```rust
+/// use luhtwin::at;
+/// let user_id = 42;
+/// let ctx = at!("User {} not found", user_id);
+/// ```
+///
 /// ```rust
 /// use luhtwin::{at, luhlog::Level};
 /// let ctx = at!("A warning context", Level::Warn);
 /// ```
 ///
-/// Using the default context (no message):
+/// ```rust
+/// use luhtwin::{at, luhlog::Level};
+/// let count = 5;
+/// let ctx = at!("Found {} issues", count; Level::Warn);
+/// ```
+///
 /// ```rust
 /// use luhtwin::at;
 /// let ctx = at!();
 /// assert_eq!(ctx.msg, "unknown error");
 /// ```
-/// ---------------------------------------------------------------------------
 #[macro_export]
 macro_rules! at {
     () => {
@@ -1167,20 +1176,9 @@ macro_rules! at {
             metadata: std::collections::HashMap::new(),
         }
     };
-    ($msg:expr) => {
+    ($fmt:literal, $($arg:expr),+ ; $severity:expr $(,)?) => {
         $crate::ErrorContext {
-            msg: $msg.to_string(),
-            file: Some(file!().to_string()),
-            line: Some(line!()),
-            doc_link: None,
-            issues: vec![],
-            severity: $crate::luhlog::Level::Error,
-            metadata: std::collections::HashMap::new(),
-        }
-    };
-    ($msg:expr, $severity:expr) => {
-        $crate::ErrorContext {
-            msg: $msg.to_string(),
+            msg: format!($fmt, $($arg),+),
             file: Some(file!().to_string()),
             line: Some(line!()),
             doc_link: None,
@@ -1200,14 +1198,25 @@ macro_rules! at {
             metadata: std::collections::HashMap::new(),
         }
     };
-    ($fmt:literal, $($arg:expr),+, $severity:expr $(,)?) => {
+    ($msg:expr ; $severity:expr) => {
         $crate::ErrorContext {
-            msg: format!($fmt, $($arg),+),
+            msg: $msg.to_string(),
             file: Some(file!().to_string()),
             line: Some(line!()),
             doc_link: None,
             issues: vec![],
             severity: $severity,
+            metadata: std::collections::HashMap::new(),
+        }
+    };
+    ($msg:expr) => {
+        $crate::ErrorContext {
+            msg: $msg.to_string(),
+            file: Some(file!().to_string()),
+            line: Some(line!()),
+            doc_link: None,
+            issues: vec![],
+            severity: $crate::luhlog::Level::Error,
             metadata: std::collections::HashMap::new(),
         }
     };
