@@ -938,6 +938,54 @@ impl AnyError {
     }
 }
 
+impl From<ErrorContext> for AnyError {
+    /// Converts an `ErrorContext` into an `AnyError`.
+    ///
+    /// This allows you to easily promote a context into a full error.
+    ///
+    /// # Example
+    /// ---------------------------------------------------------------------------
+    /// ```rust
+    /// use luhtwin::{at, AnyError};
+    /// 
+    /// let ctx = at!("Something went wrong")
+    ///     .with_doc_link("https://example.com/docs")
+    ///     .with_severity(luhtwin::Level::Critical);
+    /// 
+    /// let err: AnyError = ctx.into();
+    /// println!("{}", err.display_pretty());
+    /// ```
+    /// ---------------------------------------------------------------------------
+    fn from(ctx: ErrorContext) -> Self {
+        AnyError {
+            contexts: vec![ctx],
+            source: None,
+            backtrace: Backtrace::capture(),
+            logged: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+}
+
+impl ErrorContext {
+    /// Converts this context into a standalone `AnyError`.
+    ///
+    /// # Example
+    /// ---------------------------------------------------------------------------
+    /// ```rust
+    /// use luhtwin::at;
+    /// 
+    /// let err = at!("Operation failed")
+    ///     .with_doc_link("https://docs.example.com/errors")
+    ///     .into_error();
+    /// 
+    /// println!("{}", err.display_pretty());
+    /// ```
+    /// ---------------------------------------------------------------------------
+    pub fn into_error(self) -> AnyError {
+        self.into()
+    }
+}
+
 /// A extension trait which allows context to be added to any errors/
 /// and return back a `luhtwin::LuhTwin` for more error handling!!!
 pub trait Context<T> {
@@ -1063,10 +1111,20 @@ impl<T> LogError<T> for LuhTwin<T> {
 ///     .build();
 /// ```
 /// ---------------------------------------------------------------------------
+/// ```rust
+/// use luhtwin::anyerror;
+/// let code = 404;
+/// let err = anyerror!("Request failed with code {}", code)
+///     .doc_link("https://docs.example.com/error")
+///     .build();
+/// ```
 #[macro_export]
 macro_rules! anyerror {
     ($msg:expr) => {
         $crate::AnyErrorBuilder::new($msg)
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        $crate::AnyErrorBuilder::new(format!($fmt, $($arg)*))
     };
 }
 
