@@ -339,6 +339,24 @@ pub struct AnyError {
 /// ---------------------------------------------------------------------------
 pub type LuhTwin<T> = Result<T, AnyError>;
 
+impl From<std::io::Error> for AnyError {
+    fn from(err: std::io::Error) -> Self {
+        AnyError::new(err)
+    }
+}
+
+impl From<std::fmt::Error> for AnyError {
+    fn from(err: std::fmt::Error) -> Self {
+        AnyError::new(err)
+    }
+}
+
+impl From<std::string::FromUtf8Error> for AnyError {
+    fn from(err: std::string::FromUtf8Error) -> Self {
+        AnyError::new(err)
+    }
+}
+
 /// A generic `Result` type that can hold any user-defined error type.
 ///
 /// `BigTwin<T, E>` is simply a `Result<T, E>` alias, used to represent
@@ -629,15 +647,6 @@ impl AnyErrorBuilder {
             backtrace: Backtrace::capture(),
             logged: std::sync::atomic::AtomicBool::new(false),
         }
-    }
-}
-
-impl<E> From<E> for AnyError
-where
-    E: Error + Send + Sync + 'static,
-{
-    fn from(err: E) -> Self {
-        AnyError::new(err)
     }
 }
 
@@ -1023,7 +1032,7 @@ pub trait WrapErrExt<T> {
     /// fn might_fail() -> BigTwin<i32, std::io::Error> { unimplemented!() }
     ///
     /// let result: LuhTwin<i32> = might_fail()
-    ///     .wrap_err_context(|| "Failed during file read");
+    ///     .wrap(|| "Failed during file read");
     ///
     /// // if an error occurs it will be wrapped with a context:
     /// // AnyError { contexts: [ "Failed during file read: <original error>" ], ... }
