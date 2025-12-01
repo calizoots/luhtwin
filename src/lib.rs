@@ -632,20 +632,11 @@ impl AnyErrorBuilder {
     }
 }
 
-impl From<std::io::Error> for AnyError {
-    fn from(err: std::io::Error) -> Self {
-        AnyError::new(err)
-    }
-}
-
-impl From<std::fmt::Error> for AnyError {
-    fn from(err: std::fmt::Error) -> Self {
-        AnyError::new(err)
-    }
-}
-
-impl From<std::string::FromUtf8Error> for AnyError {
-    fn from(err: std::string::FromUtf8Error) -> Self {
+impl<E> From<E> for AnyError
+where
+    E: Error + Send + Sync + 'static,
+{
+    fn from(err: E) -> Self {
         AnyError::new(err)
     }
 }
@@ -1022,7 +1013,7 @@ where
 }
 
 /// Extension trait for adding contextual information to errors by mapping them.
-pub trait MapErrExt<T> {
+pub trait WrapErrExt<T> {
     /// Maps the error and adds additional context, returning a `LuhTwin<T>`.
     ///
     /// # Example
@@ -1032,23 +1023,23 @@ pub trait MapErrExt<T> {
     /// fn might_fail() -> BigTwin<i32, std::io::Error> { unimplemented!() }
     ///
     /// let result: LuhTwin<i32> = might_fail()
-    ///     .map_err_context(|| "Failed during file read");
+    ///     .wrap_err_context(|| "Failed during file read");
     ///
     /// // if an error occurs it will be wrapped with a context:
-    /// // AnyError { contexts: [ "Failed during file read", "<original error>" ], ... }
+    /// // AnyError { contexts: [ "Failed during file read: <original error>" ], ... }
     /// ```
     /// ---------------------------------------------------------------------------
-    fn map_err_context<F, C>(self, f: F) -> LuhTwin<T>
+    fn wrap<F, C>(self, f: F) -> LuhTwin<T>
     where
         F: FnOnce() -> C,
         C: fmt::Display;
 }
 
-impl<T, E> MapErrExt<T> for BigTwin<T, E>
+impl<T, E> WrapErrExt<T> for BigTwin<T, E>
 where
     E: Error + Send + Sync + 'static,
 {
-    fn map_err_context<F, C>(self, f: F) -> LuhTwin<T>
+    fn wrap<F, C>(self, f: F) -> LuhTwin<T>
     where
         F: FnOnce() -> C,
         C: fmt::Display,
@@ -1149,7 +1140,7 @@ macro_rules! anyerror {
 ///
 /// ```rust
 /// use luhtwin::{at, luhlog::Level};
-/// let ctx = at!("A warning context", Level::Warn);
+/// let ctx = at!("A warning context"; Level::Warn);
 /// ```
 ///
 /// ```rust
