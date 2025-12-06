@@ -1,6 +1,6 @@
 [package]
 name = "luhtwin"
-version = "0.0.8"
+version = "0.1.0"
 authors = ["cali zoots <calizoots@gmail.com>"]
 edition = "2021"
 description = "A beta horrible Rust error handling library with AnyError and context macros"
@@ -9,4 +9,3 @@ license-file = "LICENSE"
 repository = "https://github.com/calizoots/luhtwin"
 
 [dependencies]
-luhlog = { version = "0.0.3" }

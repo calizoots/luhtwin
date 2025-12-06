@@ -1,5 +1,6 @@
 use super::*;
 
+use std::collections::HashMap;
 use std::io;
 use std::error::Error as StdError;
 
@@ -59,8 +60,7 @@ fn context_chain_root_cause_is_original_error() {
 #[test]
 fn map_err_produces_combined_message() {
     let err: Result<(), io::Error> = Err(io::Error::new(io::ErrorKind::Other, "low memory"));
-    let result = err.map_err_context(|| "while running benchmark");
-    // let result = err.map_err(|e| format!("while running benchmark: {}", e));
+    let result = err.wrap(|| "while running benchmark");
 
     assert!(result.is_err());
     let e = result.unwrap_err();
@@ -180,7 +180,7 @@ fn anyerror_can_be_sent_across_threads() {
 
 #[test]
 fn anyerror_without_message_defaults_to_unknown() {
-    let e = AnyError { contexts: vec!(), source: None, backtrace: Backtrace::capture(), logged: false.into() };
+    let e = AnyError { contexts: vec!(), source: None, backtrace: Backtrace::capture() };
     assert_eq!(e.to_string(), "unknown error");
     assert!(e.source().is_none());
 }
@@ -229,7 +229,7 @@ fn root_cause_finds_deepest_source() {
 #[test]
 fn map_err_context_handles_empty_message() {
     let err: Result<(), io::Error> = Err(io::Error::new(io::ErrorKind::Other, "missing data"));
-    let result = err.map_err_context(|| "");
+    let result = err.wrap(|| "");
     let e = result.unwrap_err();
     assert!(e.to_string().contains("missing data"));
 }
@@ -257,46 +257,6 @@ fn with_context_closure_is_called_on_err() {
 }
 
 #[test]
-fn max_severity_returns_highest() {
-    let err = AnyError::new(io::Error::new(io::ErrorKind::Other, "test"))
-        .with_context(at!("debug msg", Level::Debug))
-        .with_context(at!("critical msg", Level::Critical))
-        .with_context(at!("info msg", Level::Info));
-    
-    assert_eq!(err.max_severity(), Level::Critical);
-}
-
-#[test]
-fn max_severity_defaults_to_error() {
-    let err = AnyError::new(io::Error::new(io::ErrorKind::Other, "test"));
-    assert_eq!(err.max_severity(), Level::Error);
-}
-
-#[test]
-fn error_context_builder_methods() {
-    let ctx = at!("test error")
-        .with_doc_link("https://docs.example.com/error")
-        .with_issues(vec!["#123", "#456"])
-        .with_severity(Level::Warn)
-        .with_metadata("user_id", 42)
-        .with_metadata("request_id", "abc-123");
-    
-    assert_eq!(ctx.doc_link, Some("https://docs.example.com/error".to_string()));
-    assert_eq!(ctx.issues.len(), 2);
-    assert_eq!(ctx.severity, Level::Warn);
-    assert_eq!(ctx.metadata.len(), 2);
-}
-
-#[test]
-fn to_log_format_escapes_quotes() {
-    let err = AnyError::new(io::Error::new(io::ErrorKind::Other, "error with \"quotes\""))
-        .with_context(at!("message with \"quotes\""));
-    
-    let log = err.to_log_format();
-    assert!(log.contains("\\\""));
-}
-
-#[test]
 fn iter_sources_traverses_entire_chain() {
     let err: Result<(), io::Error> = Err(io::Error::new(io::ErrorKind::Other, "root"));
     let e = err.context("layer1").context("layer2").unwrap_err();
@@ -318,60 +278,6 @@ fn root_cause_on_anyerror_directly() {
 }
 
 #[test]
-fn display_contexts_shows_all_contexts() {
-    let err = AnyError::new(io::Error::new(io::ErrorKind::Other, "source"))
-        .with_context(at!("first context"))
-        .with_context(at!("second context"));
-    
-    let display = err.display_contexts();
-    assert!(display.contains("1: second context"));
-    assert!(display.contains("-> 2: first context"));
-}
-
-#[test]
-fn display_contexts_includes_doc_links_and_issues() {
-    let ctx = at!("error with metadata")
-        .with_doc_link("https://example.com")
-        .with_issues(vec!["issue-1", "issue-2"]);
-    
-    let err = AnyError::new(io::Error::new(io::ErrorKind::Other, "test"))
-        .with_context(ctx);
-    
-    let display = err.display_contexts();
-    assert!(display.contains("[doc: https://example.com]"));
-    assert!(display.contains("[issues: issue-1, issue-2]"));
-}
-
-#[test]
-fn display_contexts_tree_formats_correctly() {
-    let err = AnyError::new(io::Error::new(io::ErrorKind::Other, "source"))
-        .with_context(at!("first"))
-        .with_context(at!("second"));
-    
-    let tree = err.display_contexts_tree();
-    println!("{}", tree);
-    assert!(tree.contains("├─ second"));
-
-    assert!(tree.contains("└─ first"));
-}
-
-#[test]
-fn log_error_trait_does_not_consume_result() {
-    let err: LuhTwin<()> = Err(AnyError::new(io::Error::new(io::ErrorKind::Other, "test")));
-    let result = err.log_error();
-    assert!(result.is_err());
-}
-
-#[test]
-fn log_once_marks_error_as_logged() {
-    let err = AnyError::new(io::Error::new(io::ErrorKind::Other, "test"));
-    assert!(!err.is_logged());
-    
-    let result: LuhTwin<()> = Err(err);
-    let _ = result.log_once();
-}
-
-#[test]
 fn multiple_contexts_preserve_order() {
     let err = AnyError::new(io::Error::new(io::ErrorKind::Other, "root"))
         .with_context(at!("first"))
@@ -379,9 +285,9 @@ fn multiple_contexts_preserve_order() {
         .with_context(at!("third"));
     
     assert_eq!(err.contexts.len(), 3);
-    assert_eq!(err.contexts[0].msg, "first");
-    assert_eq!(err.contexts[1].msg, "second");
-    assert_eq!(err.contexts[2].msg, "third");
+    assert_eq!(err.contexts[0].message, "first");
+    assert_eq!(err.contexts[1].message, "second");
+    assert_eq!(err.contexts[2].message, "third");
 }
 
 #[test]
@@ -393,14 +299,6 @@ fn from_implementations_work() {
     let fmt_err = std::fmt::Error;
     let any_err: AnyError = fmt_err.into();
     assert!(any_err.source().is_some());
-}
-
-#[test]
-fn at_macro_with_no_args() {
-    let ctx = at!();
-    assert_eq!(ctx.msg, "unknown error");
-    assert!(ctx.file.is_some());
-    assert!(ctx.line.is_some());
 }
 
 #[test]
@@ -421,53 +319,56 @@ fn print_error_formats_demonstration() {
     println!("\n=== ERROR FORMAT DEMONSTRATION ===\n");
     
     let err: Result<(), io::Error> = Err(io::Error::new(io::ErrorKind::NotFound, "config.json not found"));
+    let mut meta = HashMap::new();
+    meta.insert("version", "1.0.0");
+    meta.insert("environment", "production");
     let err_with_metadata = err
         .context("failed to load configuration")
         .unwrap_err()
         .with_context(
-            at!("application startup failed", Level::Critical)
-                .with_doc_link("https://docs.example.com/startup-errors")
-                .with_issues(vec!["#123", "#456"])
-                .with_metadata("version", "1.0.0")
-                .with_metadata("environment", "production")
+            at!("application startup failed")
+                .attach("doc link", "https://docs.example.com/startup-errors")
+                .attach("issues", vec!["#123", "#456"])
+                .attach("metadata", meta)
         );
     
-    println!("1. DISPLAY (to_string):");
-    println!("{}\n", err_with_metadata);
-    
-    println!("2. DISPLAY_PRETTY:");
-    println!("{}\n", err_with_metadata.display_pretty());
-    
-    println!("3. DISPLAY_CONTEXTS:");
-    println!("{}\n", err_with_metadata.display_contexts());
-    
-    println!("4. DISPLAY_CONTEXTS_TREE:");
-    println!("{}\n", err_with_metadata.display_contexts_tree());
-    
-    println!("5. TO_LOG_FORMAT:");
-    println!("{}\n", err_with_metadata.to_log_format());
-    
-    println!("6. DISPLAY_FULL:");
-    println!("{}\n", err_with_metadata.display_full());
+    println!("{:?}\n", err_with_metadata);
     
     println!("=== END DEMONSTRATION ===\n");
 }
 
+fn test_wrap_luhtwin_helper() -> LuhTwin<()> {
+    let err: LuhTwin<()> = Err(io::Error::new(io::ErrorKind::NotFound, "config.json not found"))
+        .wrap(|| "failed to get config.json");
+
+    err
+}
+
+#[test]
+fn test_wrap_luhtwin() {
+    let err = test_wrap_luhtwin_helper()
+        .encase(|| "luhtwin helper error");
+
+    println!("{:?}", err)
+}
+
 #[test]
 fn error_context_display_with_all_fields() {
-    let ctx = ErrorContext {
-        msg: "test error".to_string(),
-        file: Some("main.rs".to_string()),
-        line: Some(42),
-        doc_link: Some("https://example.com/docs".to_string()),
-        issues: vec!["issue-1".to_string(), "issue-2".to_string()],
-        metadata: HashMap::new(),
-        severity: Level::Error,
-    };
+    let mut meta = HashMap::new();
+    meta.insert("version", "1.0.0");
+    meta.insert("environment", "production");
+    let ctx = ErrorContext::new("test error")
+        .file("main.rs")
+        .line(42)
+        .attach("doc link", "https://example.com/docs")
+        .attach("issues", vec!["issue-1", "issue-2"])
+        .attach("metadata", meta);
     
     let display = format!("{}", ctx);
+    println!("{}", display);
     assert!(display.contains("test error"));
-    assert!(display.contains("main.rs:42"));
+    assert!(display.contains("main.rs"));
+    assert!(display.contains("42"));
     assert!(display.contains("https://example.com/docs"));
     assert!(display.contains("issue-1"));
     assert!(display.contains("issue-2"));
