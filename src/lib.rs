@@ -247,18 +247,6 @@ impl Error for AnyError {
 
 pub type LuhTwin<T> = Result<T, AnyError>;
 
-impl From<&str> for AnyError {
-    fn from(str: &str) -> Self {
-        AnyError::new(at!(str).into_error())
-    }
-}
-
-impl From<String> for AnyError {
-    fn from(str: String) -> Self {
-        AnyError::new(at!(str).into_error())
-    }
-}
-
 impl From<std::io::Error> for AnyError {
     fn from(err: std::io::Error) -> Self {
         AnyError::new(err)
