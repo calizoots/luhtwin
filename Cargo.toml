@@ -1,6 +1,6 @@
 [package]
 name = "luhtwin"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["cali zoots <calizoots@gmail.com>"]
 edition = "2021"
 description = "A beta horrible Rust error handling library with AnyError and context macros"
